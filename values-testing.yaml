@@ -37,10 +37,9 @@ database:
   existingSecret: ""
   password: "ChangeMeProductionDbPassword123!"
 
-# Cache settings
+# Cache settings (Disabled for single-pod testing)
 cache:
-  enabled: true
-  stack: kubernetes
+  enabled: false
 
 # Lower resource allocations suitable for Minikube / EC2 t3.medium
 resources:
@@ -53,16 +52,16 @@ resources:
 
 # Probes tuned for lower resource dev/test environments
 livenessProbe:
-  initialDelaySeconds: 120
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
-
-readinessProbe:
-  initialDelaySeconds: 45
+  initialDelaySeconds: 150
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 5
+
+readinessProbe:
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 10
 
 # Ingress Configuration (for Minikube testing)
 ingress:
