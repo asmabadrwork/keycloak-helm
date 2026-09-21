@@ -1,0 +1,117 @@
+# Production Keycloak Helm Values (Bitnami Chart)
+# Usage: helm install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak -n keycloak -f values-production.yaml
+
+replicaCount: 2
+
+# Global options
+global:
+  storageClass: ""
+
+# Production Admin User
+# Securely loaded from Kubernetes secret `keycloak-admin-secret`
+auth:
+  adminUser: "admin"
+  existingSecret: "keycloak-admin-secret"
+  passwordSecretKey: "admin-password"
+
+# Image Configuration (Standard Official Keycloak Image)
+image:
+  repository: quay.io/keycloak/keycloak
+  tag: 26.3.3
+  pullPolicy: IfNotPresent
+
+# Keycloak Quarkus Engine & Proxy Settings
+proxyHeaders: x-forwarded
+httpRelativePath: /
+
+# Environment Variables for Production Tuning
+extraEnvVars:
+  - name: KC_HOSTNAME
+    value: "auth.example.com"
+  - name: KC_HOSTNAME_ADMIN
+    value: "auth.example.com"
+  - name: KC_HOSTNAME_STRICT
+    value: "true"
+  - name: KC_HOSTNAME_STRICT_HTTPS
+    value: "true"
+  - name: KC_HTTP_ENABLED
+    value: "true" # HTTP enabled between Ingress TLS termination and Pod
+  - name: KC_METRICS_ENABLED
+    value: "true"
+  - name: KC_HEALTH_ENABLED
+    value: "true"
+  - name: KC_LOG_LEVEL
+    value: "INFO"
+
+# Disable built-in single-pod PostgreSQL (Use external HA PostgreSQL)
+postgresql:
+  enabled: false
+
+# External PostgreSQL Database Configuration
+externalDatabase:
+  host: "postgres-ha.database.svc.cluster.local" # Or RDS / Cloud SQL endpoint
+  port: 5432
+  user: "keycloak"
+  database: "keycloak"
+  existingSecret: "keycloak-db-secret"
+  existingSecretPasswordKey: "password"
+
+# Resource Allocation for Production (Adjust based on cluster capacity)
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2048Mi
+  requests:
+    cpu: 1000m
+    memory: 1024Mi
+
+# Production Readiness & Liveness Probes
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 120
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# High Availability Infinispan Cache & KUBE_PING Clustering
+cache:
+  enabled: true
+
+# Ingress Configuration (NGINX Ingress Controller + Cert-Manager TLS)
+ingress:
+  enabled: true
+  ingressClassName: "nginx"
+  hostname: "auth.example.com"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  tls: true
+  extraTls:
+    - hosts:
+        - "auth.example.com"
+      secretName: keycloak-tls-secret
+
+# Service Account & Pod Security
+serviceAccount:
+  create: true
+  name: keycloak-service-account
+
+# Pod Anti-Affinity (Ensure Keycloak pods run on different nodes for HA)
+podAntiAffinityPreset: hard
+
+# Prometheus Metrics Monitoring (optional)
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: "keycloak"

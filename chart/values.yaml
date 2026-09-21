@@ -1,0 +1,86 @@
+# Default values for custom Keycloak Helm Chart (Production Grade)
+
+replicaCount: 2
+
+image:
+  repository: quay.io/keycloak/keycloak
+  tag: 26.3.3
+  pullPolicy: IfNotPresent
+
+# Admin Credentials (or reference existing secret)
+admin:
+  createSecret: true
+  existingSecret: "" # Set to secret name if created manually
+  username: admin
+  password: "ChangeMeProductionPassword123!"
+
+# Keycloak Quarkus Runtime Configuration
+hostname: "auth.example.com"
+proxyHeaders: "x-forwarded"
+httpEnabled: true
+metricsEnabled: true
+healthEnabled: true
+logLevel: "INFO"
+
+# Database Configuration (External HA PostgreSQL recommended)
+database:
+  vendor: postgres
+  host: "postgres-ha.database.svc.cluster.local"
+  port: 5432
+  name: "keycloak"
+  username: "keycloak"
+  createSecret: true
+  existingSecret: "" # Set to secret name if created manually
+  password: "ChangeMeProductionDbPassword123!"
+
+# Clustering & Cache (Infinispan via JGroups KUBE_PING)
+cache:
+  enabled: true
+  stack: kubernetes # Options: kubernetes (DNS_PING), tcp, udp
+
+# Resource Allocations
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2048Mi
+  requests:
+    cpu: 1000m
+    memory: 1024Mi
+
+# Probes
+livenessProbe:
+  initialDelaySeconds: 120
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  hostname: "auth.example.com"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  tls:
+    enabled: true
+    secretName: keycloak-tls-secret
+
+# Service Account
+serviceAccount:
+  create: true
+  name: ""
+
+# High Availability Pod Anti-Affinity
+podAntiAffinity:
+  enabled: true
+  type: hard # soft or hard
