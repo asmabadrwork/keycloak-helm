@@ -80,9 +80,9 @@ spec:
             - name: KC_HOSTNAME_ADMIN
               value: {{ .Values.hostname | quote }}
             - name: KC_HOSTNAME_STRICT
-              value: "true"
+              value: {{ default "false" .Values.hostnameStrict | quote }}
             - name: KC_HOSTNAME_STRICT_HTTPS
-              value: "true"
+              value: {{ default "false" .Values.hostnameStrictHttps | quote }}
             - name: KC_HTTP_ENABLED
               value: {{ .Values.httpEnabled | quote }}
             - name: KC_PROXY_HEADERS

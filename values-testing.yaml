@@ -18,6 +18,8 @@ admin:
 
 # Keycloak Quarkus Configuration for Minikube Testing
 hostname: "keycloak.local"
+hostnameStrict: false
+hostnameStrictHttps: false
 proxyHeaders: "x-forwarded"
 httpEnabled: true
 metricsEnabled: true
