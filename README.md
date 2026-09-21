@@ -91,6 +91,6 @@ Edit [`chart/values.yaml`](chart/values.yaml) to configure:
 
 ## Production Security & Architecture Notes
 
-- **Reverse Proxy Headers**: `KC_PROXY_HEADERS=x-forwarded` is required when terminating SSL at the Ingress controller.
+- **Reverse Proxy Headers**: `KC_PROXY_HEADERS=xforwarded` is required when terminating SSL at the Ingress controller.
 - **Infinispan Clustering**: `podAntiAffinityPreset: hard` ensures replicas are placed on separate Kubernetes nodes for high availability.
 - **Database Connection Pooling**: Ensure your PostgreSQL database supports connection pooling (or max_connections is sized appropriately for `replicaCount * connection_pool_size`).

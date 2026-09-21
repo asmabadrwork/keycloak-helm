@@ -21,7 +21,7 @@ image:
   pullPolicy: IfNotPresent
 
 # Keycloak Quarkus Engine & Proxy Settings
-proxyHeaders: x-forwarded
+proxyHeaders: xforwarded
 httpRelativePath: /
 
 # Environment Variables for Production Tuning

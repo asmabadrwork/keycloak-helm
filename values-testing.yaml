@@ -20,7 +20,7 @@ admin:
 hostname: "keycloak.local"
 hostnameStrict: false
 hostnameStrictHttps: false
-proxyHeaders: "x-forwarded"
+proxyHeaders: "xforwarded"
 httpEnabled: true
 metricsEnabled: true
 healthEnabled: true

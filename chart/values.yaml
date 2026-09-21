@@ -18,7 +18,7 @@ admin:
 hostname: "auth.example.com"
 hostnameStrict: true
 hostnameStrictHttps: true
-proxyHeaders: "x-forwarded"
+proxyHeaders: "xforwarded"
 httpEnabled: true
 metricsEnabled: true
 healthEnabled: true
