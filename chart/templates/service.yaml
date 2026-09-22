@@ -6,13 +6,13 @@ metadata:
   labels:
     {{- include "keycloak.labels" . | nindent 4 }}
 spec:
-  type: {{ default "ClusterIP" .Values.service.type }}
+  type: {{ default "ClusterIP" (or .Values.keycloak.service.type .Values.service.type) }}
   ports:
     - name: http
-      port: {{ default 8080 .Values.service.httpPort }}
+      port: {{ default 80 (or .Values.keycloak.service.port .Values.service.httpPort) }}
       targetPort: 8080
-      {{- if and (eq (default "ClusterIP" .Values.service.type) "NodePort") .Values.service.nodePort }}
-      nodePort: {{ .Values.service.nodePort }}
+      {{- if and (eq (default "ClusterIP" (or .Values.keycloak.service.type .Values.service.type)) "NodePort") (or .Values.keycloak.service.nodePort .Values.service.nodePort) }}
+      nodePort: {{ or .Values.keycloak.service.nodePort .Values.service.nodePort }}
       {{- end }}
       protocol: TCP
     - name: management

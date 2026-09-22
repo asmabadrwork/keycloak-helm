@@ -1,27 +1,28 @@
-{{- if .Values.ingress.enabled -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "keycloak.fullname" . }}
+  name: {{ include "keycloak.fullname" . }}-ingress
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "keycloak.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- if .Values.tls.enabled }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    {{- else }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
 spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
-  {{- end }}
-  {{- if .Values.ingress.tls.enabled }}
+  ingressClassName: nginx
+  {{- if .Values.tls.enabled }}
   tls:
     - hosts:
-        - {{ .Values.ingress.hostname }}
-      secretName: {{ .Values.ingress.tls.secretName }}
+        - {{ .Values.domain }}
+      secretName: {{ .Values.tls.secretName }}
   {{- end }}
   rules:
-    - host: {{ .Values.ingress.hostname }}
+    - host: {{ .Values.domain }}
       http:
         paths:
           - path: /
@@ -30,5 +31,4 @@ spec:
               service:
                 name: {{ include "keycloak.fullname" . }}
                 port:
-                  name: http
-{{- end }}
+                  number: {{ .Values.keycloak.service.port }}

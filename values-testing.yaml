@@ -1,5 +1,12 @@
-# Testing Keycloak Helm Values (Optimized for Minikube / EC2 Single Node)
+# Testing Keycloak Helm Values (OpsTree Backstage-style Network Architecture)
 # Usage: helm upgrade --install keycloak ./chart -n keycloak -f values-testing.yaml
+
+# Top-level Domain & TLS Configuration (OpsTree standard)
+domain: keycloak.tyagi.fun
+
+tls:
+  enabled: true
+  secretName: keycloak-tls-secret
 
 # Single replica for testing environment
 replicaCount: 1
@@ -16,7 +23,7 @@ admin:
   username: admin
   password: "ChangeMeProductionPassword123!"
 
-# Keycloak Quarkus Configuration for Minikube Testing
+# Keycloak Quarkus Configuration
 hostname: "keycloak.tyagi.fun"
 hostnameStrict: false
 proxyHeaders: "xforwarded"
@@ -25,7 +32,7 @@ metricsEnabled: true
 healthEnabled: true
 logLevel: "INFO"
 
-# Database Configuration (Connects to the test PostgreSQL deployed in keycloak namespace)
+# Database Configuration
 database:
   vendor: postgres
   host: "postgres-ha.keycloak.svc.cluster.local"
@@ -40,7 +47,7 @@ database:
 cache:
   enabled: false
 
-# Lower resource allocations suitable for Minikube / EC2 t3.medium
+# Lower resource allocations suitable for Minikube / EC2
 resources:
   limits:
     cpu: 1000m
@@ -48,6 +55,13 @@ resources:
   requests:
     cpu: 500m
     memory: 768Mi
+
+# Keycloak Service Configuration (OpsTree pattern)
+keycloak:
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 30080
 
 # Probes tuned for lower resource dev/test environments
 livenessProbe:
@@ -61,25 +75,6 @@ readinessProbe:
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 10
-
-# Ingress Configuration (for Minikube testing)
-ingress:
-  enabled: true
-  className: "nginx"
-  hostname: "keycloak.tyagi.fun"
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
-    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-  tls:
-    enabled: true
-    secretName: keycloak-tls-secret
-
-# Service Configuration
-service:
-  type: NodePort
-  httpPort: 8080
-  nodePort: 30080
 
 # Service Account
 serviceAccount:

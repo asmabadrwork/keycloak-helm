@@ -1,62 +1,54 @@
-# Production Keycloak Helm Values (Bitnami Chart)
-# Usage: helm install keycloak oci://registry-1.docker.io/bitnamicharts/keycloak -n keycloak -f values-production.yaml
+# Enterprise Production Keycloak Helm Values (OpsTree Standard)
+# Usage: helm upgrade --install keycloak ./chart -n keycloak -f values-production.yaml
 
+# Top-level Domain & TLS Configuration
+domain: keycloak.opstree.dev
+
+tls:
+  enabled: true
+  secretName: keycloak-tls-secret
+
+# Multi-pod High Availability Replication
 replicaCount: 2
 
-# Global options
-global:
-  storageClass: ""
-
-# Production Admin User
-# Securely loaded from Kubernetes secret `keycloak-admin-secret`
-auth:
-  adminUser: "admin"
-  existingSecret: "keycloak-admin-secret"
-  passwordSecretKey: "admin-password"
-
-# Image Configuration (Standard Official Keycloak Image)
 image:
   repository: quay.io/keycloak/keycloak
   tag: 26.3.3
   pullPolicy: IfNotPresent
 
-# Keycloak Quarkus Engine & Proxy Settings
-proxyHeaders: xforwarded
-httpRelativePath: /
+# Admin Credentials
+admin:
+  createSecret: true
+  existingSecret: ""
+  username: admin
+  password: "CHANGE_ME_PRODUCTION_ADMIN_PASSWORD"
 
-# Environment Variables for Production Tuning
-extraEnvVars:
-  - name: KC_HOSTNAME
-    value: "auth.example.com"
-  - name: KC_HOSTNAME_ADMIN
-    value: "auth.example.com"
-  - name: KC_HOSTNAME_STRICT
-    value: "true"
-  - name: KC_HOSTNAME_STRICT_HTTPS
-    value: "true"
-  - name: KC_HTTP_ENABLED
-    value: "true" # HTTP enabled between Ingress TLS termination and Pod
-  - name: KC_METRICS_ENABLED
-    value: "true"
-  - name: KC_HEALTH_ENABLED
-    value: "true"
-  - name: KC_LOG_LEVEL
-    value: "INFO"
+# Keycloak Quarkus Runtime Configuration
+hostname: "keycloak.opstree.dev"
+hostnameStrict: true
+proxyHeaders: "xforwarded"
+httpEnabled: true
+metricsEnabled: true
+healthEnabled: true
+logLevel: "INFO"
 
-# Disable built-in single-pod PostgreSQL (Use external HA PostgreSQL)
-postgresql:
-  enabled: false
-
-# External PostgreSQL Database Configuration
-externalDatabase:
-  host: "postgres-ha.database.svc.cluster.local" # Or RDS / Cloud SQL endpoint
+# External Database Configuration (Amazon RDS / HA PostgreSQL)
+database:
+  vendor: postgres
+  host: "keycloak-db.c123456789.us-east-1.rds.amazonaws.com"
   port: 5432
-  user: "keycloak"
-  database: "keycloak"
-  existingSecret: "keycloak-db-secret"
-  existingSecretPasswordKey: "password"
+  name: "keycloak"
+  username: "keycloak"
+  createSecret: true
+  existingSecret: ""
+  password: "CHANGE_ME_PRODUCTION_DB_PASSWORD"
 
-# Resource Allocation for Production (Adjust based on cluster capacity)
+# Infinispan User Session Clustering for Multi-Pod HA
+cache:
+  enabled: true
+  stack: kubernetes
+
+# Production Resource Allocations
 resources:
   limits:
     cpu: 2000m
@@ -65,53 +57,44 @@ resources:
     cpu: 1000m
     memory: 1024Mi
 
-# Production Readiness & Liveness Probes
+# Production Health Probes
 livenessProbe:
-  enabled: true
   initialDelaySeconds: 120
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
 
 readinessProbe:
-  enabled: true
   initialDelaySeconds: 30
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
 
-# High Availability Infinispan Cache & KUBE_PING Clustering
-cache:
-  enabled: true
+# Keycloak Service Configuration (ClusterIP for Production Ingress)
+keycloak:
+  service:
+    type: ClusterIP
+    port: 80
 
-# Ingress Configuration (NGINX Ingress Controller + Cert-Manager TLS)
-ingress:
+# Horizontal Pod Autoscaler (Auto-scales from 2 to 5 pods under heavy load)
+hpa:
   enabled: true
-  ingressClassName: "nginx"
-  hostname: "auth.example.com"
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
-    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-  tls: true
-  extraTls:
-    - hosts:
-        - "auth.example.com"
-      secretName: keycloak-tls-secret
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
 
-# Service Account & Pod Security
+# Pod Disruption Budget (Guarantees zero downtime during node maintenance)
+pdb:
+  enabled: true
+  minAvailable: 1
+
+# Service Account & Security
 serviceAccount:
   create: true
   name: keycloak-service-account
 
-# Pod Anti-Affinity (Ensure Keycloak pods run on different nodes for HA)
-podAntiAffinityPreset: hard
-
-# Prometheus Metrics Monitoring (optional)
-metrics:
+# High Availability Pod Anti-Affinity (Spreads pods across different nodes/AZs)
+podAntiAffinity:
   enabled: true
-  serviceMonitor:
-    enabled: true
-    namespace: "keycloak"
+  type: hard
