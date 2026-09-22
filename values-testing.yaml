@@ -17,9 +17,8 @@ admin:
   password: "ChangeMeProductionPassword123!"
 
 # Keycloak Quarkus Configuration for Minikube Testing
-hostname: "keycloak.local"
+hostname: "keycloak.tyagi.fun"
 hostnameStrict: false
-hostnameStrictHttps: false
 proxyHeaders: "xforwarded"
 httpEnabled: true
 metricsEnabled: true
@@ -65,14 +64,15 @@ readinessProbe:
 
 # Ingress Configuration (for Minikube testing)
 ingress:
-  enabled: false # Set to true if minikube ingress addon is enabled
+  enabled: true
   className: "nginx"
-  hostname: "keycloak.local"
+  hostname: "keycloak.tyagi.fun"
   annotations:
     nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
     nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
   tls:
-    enabled: false
+    enabled: true
     secretName: keycloak-tls-secret
 
 # Service Account

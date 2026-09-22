@@ -77,12 +77,12 @@ spec:
             # Hostname & Proxy Settings
             - name: KC_HOSTNAME
               value: {{ .Values.hostname | quote }}
+            {{- if .Values.hostnameAdmin }}
             - name: KC_HOSTNAME_ADMIN
-              value: {{ .Values.hostname | quote }}
+              value: {{ .Values.hostnameAdmin | quote }}
+            {{- end }}
             - name: KC_HOSTNAME_STRICT
               value: {{ default "false" .Values.hostnameStrict | quote }}
-            - name: KC_HOSTNAME_STRICT_HTTPS
-              value: {{ default "false" .Values.hostnameStrictHttps | quote }}
             - name: KC_HTTP_ENABLED
               value: {{ .Values.httpEnabled | quote }}
             - name: KC_PROXY_HEADERS

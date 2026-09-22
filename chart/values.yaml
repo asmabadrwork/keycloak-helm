@@ -17,7 +17,6 @@ admin:
 # Keycloak Quarkus Runtime Configuration
 hostname: "auth.example.com"
 hostnameStrict: true
-hostnameStrictHttps: true
 proxyHeaders: "xforwarded"
 httpEnabled: true
 metricsEnabled: true
