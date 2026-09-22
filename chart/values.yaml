@@ -79,6 +79,13 @@ serviceAccount:
   create: true
   name: ""
 
+# HPA & PDB Configuration
+hpa:
+  enabled: false
+
+pdb:
+  enabled: false
+
 # High Availability Pod Anti-Affinity
 podAntiAffinity:
   enabled: true

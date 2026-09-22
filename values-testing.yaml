@@ -81,6 +81,13 @@ serviceAccount:
   create: true
   name: ""
 
+# HPA & PDB (Disabled for single-pod testing)
+hpa:
+  enabled: false
+
+pdb:
+  enabled: false
+
 # Disable pod anti-affinity for single-node Minikube cluster
 podAntiAffinity:
   enabled: false
