@@ -76,6 +76,12 @@ ingress:
     enabled: true
     secretName: keycloak-tls-secret
 
+# Service Configuration
+service:
+  type: ClusterIP
+  httpPort: 8080
+  nodePort: 30080
+
 # Service Account
 serviceAccount:
   create: true

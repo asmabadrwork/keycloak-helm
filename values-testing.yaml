@@ -75,6 +75,12 @@ ingress:
     enabled: true
     secretName: keycloak-tls-secret
 
+# Service Configuration
+service:
+  type: NodePort
+  httpPort: 8080
+  nodePort: 30080
+
 # Service Account
 serviceAccount:
   create: true

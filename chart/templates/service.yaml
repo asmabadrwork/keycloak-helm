@@ -6,11 +6,14 @@ metadata:
   labels:
     {{- include "keycloak.labels" . | nindent 4 }}
 spec:
-  type: ClusterIP
+  type: {{ default "ClusterIP" .Values.service.type }}
   ports:
     - name: http
-      port: 8080
+      port: {{ default 8080 .Values.service.httpPort }}
       targetPort: 8080
+      {{- if and (eq (default "ClusterIP" .Values.service.type) "NodePort") .Values.service.nodePort }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
       protocol: TCP
     - name: management
       port: 9000
