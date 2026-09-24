@@ -1,96 +1,91 @@
-# Production Keycloak Deployment Guide on Kubernetes via Helm
+# Keycloak 26.x Enterprise Production Helm Chart on AWS EKS
 
-This repository contains the production configuration and step-by-step instructions for deploying Keycloak (Quarkus distribution) on Kubernetes using Helm.
-
-## Prerequisites
-
-- **Kubernetes Cluster**: v1.23+ with `kubectl` configured.
-- **Helm**: Helm v3 installed (`helm version`).
-- **Ingress Controller**: NGINX Ingress (or Traefik / ALB) installed.
-- **TLS Issuer**: `cert-manager` installed or custom SSL certificate secret.
-## Deployment Choices Overview
-
-When setting up Keycloak in production on Kubernetes, you have 3 main paths:
-
-1. **Option 1: Codecentric Community Helm Chart (Recommended for Helm)**
-   - Open-source, community-maintained chart designed for Keycloak on Quarkus.
-   - Easy to customize with external PostgreSQL and Ingress.
-2. **Option 2: Create a Custom Lightweight Helm Chart**
-   - Ideal if you want complete control over manifests without third-party chart dependencies.
-3. **Option 3: Official Keycloak Operator (Recommended Upstream)**
-   - Native Kubernetes Operator maintained directly by the Keycloak project. Uses `Keycloak` Custom Resources.
+Production-ready, zero-trust Helm chart for deploying Keycloak 26.x (Quarkus distribution) on AWS EKS with Amazon RDS PostgreSQL Multi-AZ, AWS Secrets Manager, and Infinispan High Availability Session Clustering.
 
 ---
 
-## Step 1: Create Namespace and Secrets
+## Architecture Flow
 
-1. Create the `keycloak` namespace:
-   ```bash
-   kubectl create namespace keycloak
-   ```
+```mermaid
+graph TD
+    Client([User Browser]) -->|HTTPS 443 / keycloak.tyagi.fun| DNS[Hostinger DNS / AWS Route53]
+    DNS --> ALB[AWS Load Balancer / NGINX Ingress]
+    
+    subgraph EKS["AWS EKS Cluster (ap-south-1)"]
+        ALB -->|Port 8080| K1[Keycloak Pod 1 - AZ ap-south-1a]
+        ALB -->|Port 8080| K2[Keycloak Pod 2 - AZ ap-south-1b]
+        
+        K1 <==>|Port 7800 Infinispan Cluster| K2
+        
+        ESO[External Secrets Operator] -->|Sync Secrets| KSEC[Kubernetes Secret: keycloak-db-secret]
+        SA[ServiceAccount: keycloak-service-account] -.->|EKS IRSA / OIDC JWT| ESO
+    end
 
-2. Edit `secrets-template.yaml` with your actual secure passwords, then apply:
-   ```bash
-   kubectl apply -f secrets-template.yaml
-   ```
-
----
-
-## Step 2: Customize `values-production.yaml`
-
-- `extraEnvVars.KC_HOSTNAME`: Set to your production FQDN (e.g. `auth.yourdomain.com`).
-- `externalDatabase.host`: Point to your PostgreSQL database host/endpoint.
-- `ingress.hostname` & `ingress.extraTls`: Update domain names.
-- `ingress.annotations`: Ensure your `cert-manager.io/cluster-issuer` or ingress annotation matches your cluster setup.
-
----
-
-## Step 3: Deploy Keycloak using Custom Helm Chart
-
-Deploy Keycloak to your Kubernetes cluster using the custom Helm chart in [`chart/`](chart/):
-
-```bash
-# Dry-run test template rendering (optional):
-helm template keycloak ./chart --namespace keycloak
-
-# Install or Upgrade Keycloak release:
-helm upgrade --install keycloak ./chart \
-  --namespace keycloak \
-  --values chart/values.yaml
+    subgraph AWS["AWS Cloud Infrastructure"]
+        ESO ==>|Port 443 HTTPS / IAM Role| SM[(AWS Secrets Manager: production/keycloak/credentials)]
+        K1 ==>|Port 5432 Private VPC| RDS[(Amazon RDS PostgreSQL Multi-AZ)]
+        K2 ==>|Port 5432 Private VPC| RDS
+    end
 ```
 
 ---
 
-## Chart Customization Guide
+## Enterprise Security Highlights
 
-Edit [`chart/values.yaml`](chart/values.yaml) to configure:
-
-- **Domain / Hostname**: `hostname: "auth.yourdomain.com"`
-- **External PostgreSQL**: `database.host`, `database.name`, `database.username`, `database.password`
-- **Replicas & HA Anti-Affinity**: `replicaCount: 2`, `podAntiAffinity.type: hard`
-- **TLS / Cert-Manager**: `ingress.hostname`, `ingress.annotations`
-
----
-
-## Step 4: Verify Deployment & HA Cluster
-
-1. Check pod status:
-   ```bash
-   kubectl get pods -n keycloak -w
-   ```
-
-2. Check Infinispan cluster discovery in logs:
-   ```bash
-   kubectl logs -n keycloak -l app.kubernetes.io/name=keycloak --tail=100
-   ```
-   Look for lines indicating JGroups node discovery (`ISPN000094: Received new cluster view`).
-
-3. Access the Admin Console at `https://auth.yourdomain.com/admin` using user `admin` and the password configured in `keycloak-admin-secret`.
+- **Zero Hardcoded Secrets:** No DB or admin credentials stored in Git or Helm values. Synced dynamically via AWS Secrets Manager & External Secrets Operator (ESO).
+- **AWS EKS IRSA (IAM Roles for Service Accounts):** Passwordless AWS API authentication using short-lived OIDC JWT tokens (KeycloakSecretsManagerRole).
+- **Pod Firewalling (Zero-Trust):** Amazon VPC CNI eBPF NetworkPolicy restricting pod ingress (ports 8080, 9000, 7800) and egress exclusively to RDS (5432) and AWS APIs (443).
+- **Non-Root Execution:** Hardened container running with unprivileged UID 1000 and privilege escalation disabled.
+- **High Availability (HA):** Multi-AZ pod anti-affinity, Infinispan cross-pod session clustering, HPA (autoscaling 2-5 pods), and Pod Disruption Budget (minAvailable: 1).
 
 ---
 
-## Production Security & Architecture Notes
+## Prerequisites
 
-- **Reverse Proxy Headers**: `KC_PROXY_HEADERS=xforwarded` is required when terminating SSL at the Ingress controller.
-- **Infinispan Clustering**: `podAntiAffinityPreset: hard` ensures replicas are placed on separate Kubernetes nodes for high availability.
-- **Database Connection Pooling**: Ensure your PostgreSQL database supports connection pooling (or max_connections is sized appropriately for `replicaCount * connection_pool_size`).
+Before deploying the Helm chart, ensure the following infrastructure is provisioned:
+
+1. **Amazon RDS PostgreSQL (Multi-AZ):** Running in your EKS VPC (`keycloak-postgres-ha.czkkku2mw6m8.ap-south-1.rds.amazonaws.com`).
+2. **AWS Secrets Manager Secret:** Secret `production/keycloak/credentials` in `ap-south-1` containing keys `db-host`, `db-password`, and `admin-password`.
+3. **AWS EKS IRSA IAM Role:** IAM Role `KeycloakSecretsManagerRole` attached to `keycloak:keycloak-service-account` with `SecretsManagerReadWrite` policy.
+4. **ZeroSSL TLS Secret:** Created in namespace `keycloak`:
+   ```bash
+   kubectl create secret tls keycloak-tls-secret --cert=fullchain.pem --key=private.key -n keycloak
+   ```
+
+---
+
+## Quick Start Deployment
+
+Deploy Keycloak to your EKS cluster with a single command:
+
+```bash
+# Deploy or Upgrade Keycloak Release
+helm upgrade --install keycloak ./chart \
+  --namespace keycloak \
+  --create-namespace
+```
+
+---
+
+## Verification & Monitoring
+
+```bash
+# Check Pod Status (2 replicas Running across Multi-AZ nodes)
+kubectl get pods -n keycloak
+
+# Verify ExternalSecret Sync Status
+kubectl get externalsecret -n keycloak
+
+# Check HPA & Pod Disruption Budget
+kubectl get hpa,pdb -n keycloak
+
+# Stream Keycloak Boot Logs
+kubectl logs -f -l app.kubernetes.io/name=keycloak -n keycloak
+```
+
+---
+
+## Access Keycloak Admin Console
+
+Once DNS propagation completes:
+- **URL:** `https://keycloak.tyagi.fun/admin`
