@@ -41,8 +41,19 @@ spec:
                 topologyKey: "kubernetes.io/hostname"
           {{- end }}
       {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: keycloak
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
@@ -52,8 +63,18 @@ spec:
             # Database Configuration
             - name: KC_DB
               value: {{ .Values.database.vendor | quote }}
+            {{- if .Values.database.host }}
             - name: KC_DB_URL
               value: "jdbc:postgresql://{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}"
+            {{- else }}
+            - name: KC_DB_URL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "keycloak.dbSecretName" . }}
+                  key: db-host
+            - name: KC_DB_URL
+              value: "jdbc:postgresql://$(KC_DB_URL_HOST):{{ .Values.database.port }}/{{ .Values.database.name }}"
+            {{- end }}
             - name: KC_DB_USERNAME
               value: {{ .Values.database.username | quote }}
             - name: KC_DB_PASSWORD

@@ -1,4 +1,4 @@
-# Testing Keycloak Helm Values (OpsTree Backstage-style Network Architecture)
+# Testing Keycloak Helm Values (OpsTree Architecture + ESO Integration Option)
 # Usage: helm upgrade --install keycloak ./chart -n keycloak -f values-testing.yaml
 
 # Top-level Domain & TLS Configuration (OpsTree standard)
@@ -8,7 +8,7 @@ tls:
   enabled: true
   secretName: keycloak-tls-secret
 
-# Single replica for testing environment
+# Single/Multi replica testing environment
 replicaCount: 1
 
 image:
@@ -16,12 +16,12 @@ image:
   tag: 26.3.3
   pullPolicy: IfNotPresent
 
-# Admin Credentials
+# Admin Credentials (Zero Hardcoded Secrets)
 admin:
   createSecret: true
   existingSecret: ""
   username: admin
-  password: "ChangeMeProductionPassword123!"
+  password: "" # Dynamically set at deploy time or via secret
 
 # Keycloak Quarkus Configuration
 hostname: "keycloak.tyagi.fun"
@@ -32,7 +32,7 @@ metricsEnabled: true
 healthEnabled: true
 logLevel: "INFO"
 
-# Database Configuration
+# Database Configuration (Zero Hardcoded Secrets)
 database:
   vendor: postgres
   host: "postgres-ha.keycloak.svc.cluster.local"
@@ -41,13 +41,13 @@ database:
   username: "keycloak"
   createSecret: true
   existingSecret: ""
-  password: "ChangeMeProductionDbPassword123!"
+  password: "" # Dynamically set at deploy time or via secret
 
 # Cache settings (Disabled for single-pod testing)
 cache:
   enabled: false
 
-# Lower resource allocations suitable for Minikube / EC2
+# Resource allocations suitable for Minikube / EC2
 resources:
   limits:
     cpu: 1000m
@@ -81,14 +81,24 @@ serviceAccount:
   create: true
   name: ""
 
-# HPA & PDB (Disabled for single-pod testing)
+# Horizontal Pod Autoscaler Enabled for Testing (Auto-scales 1 to 3 pods)
 hpa:
-  enabled: false
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
 
+# Pod Disruption Budget Enabled for Testing
 pdb:
-  enabled: false
+  enabled: true
+  minAvailable: 1
 
-# Disable pod anti-affinity for single-node Minikube cluster
+# NetworkPolicy Internal Pod Firewall Enabled for Testing
+networkPolicy:
+  enabled: true
+
+# Pod Anti-Affinity for Testing
 podAntiAffinity:
   enabled: false
   type: soft

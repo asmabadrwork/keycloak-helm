@@ -1,4 +1,4 @@
-# Production Keycloak Helm Values (OpsTree Backstage-style Network Architecture)
+# Default values for custom Keycloak Helm Chart (Zero Hardcoded Secrets)
 
 # Top-level Domain & TLS Configuration (OpsTree standard)
 domain: keycloak.opstree.dev
@@ -14,12 +14,12 @@ image:
   tag: 26.3.3
   pullPolicy: IfNotPresent
 
-# Admin Credentials
+# Admin Credentials (Managed dynamically via Secrets Engine)
 admin:
-  createSecret: true
-  existingSecret: ""
+  createSecret: false
+  existingSecret: "keycloak-admin-secret"
   username: admin
-  password: "ChangeMeProductionPassword123!"
+  password: ""
 
 # Keycloak Quarkus Runtime Configuration
 hostname: "keycloak.opstree.dev"
@@ -30,16 +30,26 @@ metricsEnabled: true
 healthEnabled: true
 logLevel: "INFO"
 
-# Database Configuration (External HA PostgreSQL / Amazon RDS)
+# Database Configuration (Managed dynamically via Secrets Engine)
 database:
   vendor: postgres
   host: "postgres-ha.database.svc.cluster.local"
   port: 5432
   name: "keycloak"
   username: "keycloak"
-  createSecret: true
-  existingSecret: ""
-  password: "ChangeMeProductionDbPassword123!"
+  createSecret: false
+  existingSecret: "keycloak-db-secret"
+  password: ""
+
+# External Secrets Operator (ESO) - AWS Secrets Manager Integration
+externalSecrets:
+  enabled: false
+  awsRegion: "us-east-1"
+  awsSecretName: "production/keycloak/credentials"
+
+# NetworkPolicy Firewall
+networkPolicy:
+  enabled: false
 
 # Clustering & Cache (Infinispan via JGroups KUBE_PING)
 cache:
