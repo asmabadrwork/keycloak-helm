@@ -109,4 +109,4 @@ serviceAccount:
 # High Availability Pod Anti-Affinity (Spreads pods across different nodes/AZs)
 podAntiAffinity:
   enabled: true
-  type: hard
+  type: soft
