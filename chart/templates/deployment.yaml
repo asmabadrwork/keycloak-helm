@@ -85,10 +85,7 @@ spec:
 
             # Admin Credentials
             - name: KEYCLOAK_ADMIN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "keycloak.adminSecretName" . }}
-                  key: admin-user
+              value: {{ default "admin" .Values.admin.username | quote }}
             - name: KEYCLOAK_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:

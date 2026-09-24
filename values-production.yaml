@@ -9,7 +9,7 @@ tls:
   secretName: keycloak-tls-secret
 
 # Multi-pod High Availability Replication
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: quay.io/keycloak/keycloak
@@ -61,11 +61,11 @@ cache:
 # Production Resource Allocations
 resources:
   limits:
-    cpu: 2000m
-    memory: 2048Mi
-  requests:
     cpu: 1000m
     memory: 1024Mi
+  requests:
+    cpu: 250m
+    memory: 512Mi
 
 # Production Health Probes
 livenessProbe:
@@ -86,11 +86,11 @@ keycloak:
     type: ClusterIP
     port: 80
 
-# Horizontal Pod Autoscaler (Auto-scales from 2 to 5 pods under heavy load)
+# Horizontal Pod Autoscaler (Auto-scales from 1 to 2 pods under heavy load)
 hpa:
   enabled: true
-  minReplicas: 2
-  maxReplicas: 5
+  minReplicas: 1
+  maxReplicas: 2
   targetCPUUtilizationPercentage: 75
   targetMemoryUtilizationPercentage: 80
 
