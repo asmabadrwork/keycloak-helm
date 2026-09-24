@@ -1,12 +1,14 @@
-# Default values for custom Keycloak Helm Chart (Zero Hardcoded Secrets)
+# Enterprise AWS EKS Production Keycloak Helm Values
+# Usage: helm upgrade --install keycloak ./chart --namespace keycloak --create-namespace
 
-# Top-level Domain & TLS Configuration (OpsTree standard)
-domain: keycloak.opstree.dev
+# Top-level Domain & TLS Configuration
+domain: keycloak.tyagi.fun
 
 tls:
   enabled: true
   secretName: keycloak-tls-secret
 
+# Multi-pod High Availability Replication across AWS EKS Availability Zones
 replicaCount: 2
 
 image:
@@ -14,15 +16,15 @@ image:
   tag: 26.3.3
   pullPolicy: IfNotPresent
 
-# Admin Credentials (Managed dynamically via Secrets Engine)
+# Admin Credentials (Zero Hardcoded Secrets: Managed via AWS Secrets Manager & ESO)
 admin:
   createSecret: false
-  existingSecret: "keycloak-admin-secret"
+  existingSecret: "keycloak-db-secret"
   username: admin
   password: ""
 
 # Keycloak Quarkus Runtime Configuration
-hostname: "keycloak.opstree.dev"
+hostname: "keycloak.tyagi.fun"
 hostnameStrict: true
 proxyHeaders: "xforwarded"
 httpEnabled: true
@@ -30,10 +32,10 @@ metricsEnabled: true
 healthEnabled: true
 logLevel: "INFO"
 
-# Database Configuration (Managed dynamically via Secrets Engine)
+# Database Configuration (Amazon RDS PostgreSQL Multi-AZ HA - Zero Hardcoded Secrets via ESO)
 database:
   vendor: postgres
-  host: "postgres-ha.database.svc.cluster.local"
+  host: "" # Dynamically pulled from AWS Secrets Manager property db-host via ESO
   port: 5432
   name: "keycloak"
   username: "keycloak"
@@ -41,37 +43,31 @@ database:
   existingSecret: "keycloak-db-secret"
   password: ""
 
-# External Secrets Operator (ESO) - AWS Secrets Manager Integration
+# External Secrets Operator (ESO) - AWS Secrets Manager Integration via EKS IRSA
 externalSecrets:
-  enabled: false
-  awsRegion: "us-east-1"
+  enabled: true
+  awsRegion: "ap-south-1"
   awsSecretName: "production/keycloak/credentials"
 
-# NetworkPolicy Firewall
+# NetworkPolicy Internal Pod Firewall Hardening (Amazon VPC CNI eBPF Controller)
 networkPolicy:
-  enabled: false
+  enabled: true
 
-# Clustering & Cache (Infinispan via JGroups KUBE_PING)
+# Infinispan User Session Clustering for Multi-Pod HA
 cache:
   enabled: true
   stack: kubernetes
 
-# Resource Allocations
+# Production Resource Allocations
 resources:
   limits:
-    cpu: 2000m
-    memory: 2048Mi
-  requests:
     cpu: 1000m
     memory: 1024Mi
+  requests:
+    cpu: 250m
+    memory: 512Mi
 
-# Keycloak Service Configuration (OpsTree pattern)
-keycloak:
-  service:
-    type: ClusterIP
-    port: 80
-
-# Probes
+# Production Health Probes
 livenessProbe:
   initialDelaySeconds: 120
   periodSeconds: 10
@@ -84,19 +80,33 @@ readinessProbe:
   timeoutSeconds: 5
   failureThreshold: 3
 
-# Service Account
+# Keycloak Service Configuration (ClusterIP for Production Ingress)
+keycloak:
+  service:
+    type: ClusterIP
+    port: 80
+
+# Horizontal Pod Autoscaler (Auto-scales from 2 to 5 pods under heavy load)
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+# Pod Disruption Budget (Guarantees zero downtime during node maintenance)
+pdb:
+  enabled: true
+  minAvailable: 1
+
+# Service Account & EKS IRSA IAM Role Binding
 serviceAccount:
   create: true
-  name: ""
+  name: keycloak-service-account
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::184430802476:role/KeycloakSecretsManagerRole"
 
-# HPA & PDB Configuration
-hpa:
-  enabled: false
-
-pdb:
-  enabled: false
-
-# High Availability Pod Anti-Affinity
+# High Availability Pod Anti-Affinity (Spreads pods across different nodes/AZs)
 podAntiAffinity:
   enabled: true
   type: hard
