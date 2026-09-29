@@ -35,7 +35,7 @@ logLevel: "INFO"
 # Database Configuration (Amazon RDS PostgreSQL Multi-AZ HA - Zero Hardcoded Secrets via ESO)
 database:
   vendor: postgres
-  host: "" # Dynamically pulled from AWS Secrets Manager property db-host via ESO
+  host: "d-dev1-rds-postgres-postgres.cl0caskygcz8.ap-south-1.rds.amazonaws.com"
   port: 5432
   name: "keycloak"
   username: "postgres"
