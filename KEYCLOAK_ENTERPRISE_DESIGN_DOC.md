@@ -1,26 +1,20 @@
-# Keycloak Enterprise Production Design & Deliverable Matrix
-
-| Phase | Work Item | Deliverable | Details & Artifacts |
-| :--- | :--- | :--- | :--- |
-| **Design** | Infrastructure Diagram | Infrastructure Diagram | Multi-AZ AWS EKS & RDS Architecture Diagram |
-| | Application Architecture | Component Diagram | Keycloak Quarkus Engine, Infinispan, & Agroal Pool |
-| | Repository Strategy | VCS Directory Structure | Version-controlled Helm Chart Repository Layout |
-| | Observability (o11y) | Metrics, Dashboards, & Alerts | Prometheus Metrics, Grafana, & Alertmanager Specs |
-| | Security Indicators | Zero-Trust Controls | IRSA, ESO, VPC CNI eBPF NetworkPolicy, Non-root |
-| | Scalability Metrics | SLA & Concurrent Capacity | SLA 99.99%, 5,000+ Concurrent Sessions, HPA Specs |
-| | Disaster Recovery (DR) | RTO & RPO Objectives | RTO < 5 min, RPO = 0 (Multi-AZ Synchronous DB) |
-| **Implementation** | Helm Implementation | Helm Chart | Custom Keycloak 26.x Quarkus Helm Chart |
-| | Environment Configuration | Helm Values File | Production Configuration (`chart/values.yaml`) |
-| | Deployment Automation | GitLab CI/CD Pipeline | Automated Helm Deployment Wrapper Pipeline |
-| | Validation | Infrastructure & Functional | Automated Smoke Tests & Health Check Matrix |
-| **Dev / Integration** | Environment Integration | Dependency Graph | EKS, RDS PostgreSQL, ESO, Ingress, GitLab |
-| | Smoke Testing | Dev Validation Report | Cluster Health & Functional Verification Report |
+# Keycloak Enterprise High-Level & Low-Level Design (HLD / LLD) Document
 
 ---
 
-## 1. Design Phase
+## 🏛️ Part 1: High-Level Design (HLD)
 
-### 1.1 Infrastructure Diagram
+### 1.1 Executive Overview & Architectural Objectives
+This document details the High-Level Design (HLD) and Low-Level Design (LLD) for deploying **Keycloak 26.x (Quarkus distribution)** in a high-availability, zero-trust enterprise production environment on **AWS EKS** in region `ap-south-1`.
+
+Key Objectives:
+- **Zero-Trust Identity Governance:** Zero static credentials in code or cluster. Authentication powered by AWS EKS IRSA (IAM Roles for Service Accounts) and AWS Secrets Manager.
+- **High Availability & Fault Tolerance:** Multi-AZ Amazon RDS PostgreSQL database replication paired with active-active Infinispan pod session clustering.
+- **Zero Downtime Operations:** Controlled rolling update strategy (`maxSurge: 0`, `maxUnavailable: 1`) backed by Pod Disruption Budgets (`minAvailable: 1`).
+
+---
+
+### 1.2 High-Level Architecture Diagram (HLD)
 
 ```mermaid
 graph TD
@@ -46,218 +40,186 @@ graph TD
 
 ---
 
-### 1.2 Application Component Architecture
+### 1.3 High-Level Component Breakdown
 
-```mermaid
-graph LR
-    subgraph KeycloakPod["Keycloak Container (Quarkus Runtime)"]
-        HTTP[HTTP/REST Engine - Port 8080]
-        MGMT[Management Interface - Port 9000]
-        ISPN[Infinispan Cache Engine - Port 7800]
-        DBP[Agroal Database Connection Pool]
-        MIC[Micrometer Metrics & Health Probes]
-    end
-
-    HTTP -->|Auth Requests| DBP
-    DBP -->|JDBC PostgreSQL| RDS[(Amazon RDS PostgreSQL)]
-    ISPN <-->|JGroups Replication| OtherPods[Peer Keycloak Pods]
-    MGMT --> MIC
-    MIC -->|Prometheus /metrics| Monitoring[Grafana / Prometheus]
-```
+| Layer | Technology Stack | HLD Responsibility |
+| :--- | :--- | :--- |
+| **DNS & Routing** | Hostinger CNAME + NGINX Ingress | External HTTPS termination (`keycloak.tyagi.fun`) and TLS Offloading via ZeroSSL certificates. |
+| **Compute / Orchestration** | AWS EKS (v1.28+) | Managed Kubernetes cluster running worker nodes across 2 Availability Zones (`ap-south-1a`, `ap-south-1b`). |
+| **Identity Engine** | Keycloak 26.x (Quarkus) | Containerized authentication engine executing as unprivileged non-root user (UID 1000). |
+| **Session Cache** | Infinispan + JGroups TCP | Active-active cross-pod user session replication over TCP port 7800 with auto-rebalancing. |
+| **Database** | Amazon RDS PostgreSQL 16.x | Multi-AZ database cluster providing synchronous block-level replication and automated failover. |
+| **Secrets & IAM** | AWS Secrets Manager + ESO + IRSA | Passwordless credential management syncing `db-host`, `db-password`, and `admin-password` into Kubernetes. |
+| **Pod Security** | Amazon VPC CNI eBPF | Stateful ingress/egress NetworkPolicy firewall rules restricting cluster traffic. |
 
 ---
 
-### 1.3 Repository Strategy (VCS Directory Structure)
+## 🔬 Part 2: Low-Level Design (LLD)
+
+### 2.1 Network Topography & Subnet Allocation (VPC: 192.168.0.0/16)
 
 ```text
-keycloak-helm/
-├── README.md                           # Enterprise Architecture & Deployment Specs
-├── .gitlab-ci.yml                      # Automated GitLab CI/CD Deployment Pipeline
-└── chart/                              # Production Helm Chart Root
-    ├── Chart.yaml                      # Helm Metadata & Version Specs
-    ├── values.yaml                     # Single Production Values Configuration
-    └── templates/                      # Kubernetes Manifest Templates
-        ├── deployment.yaml             # Keycloak 26 Quarkus Deployment Spec
-        ├── service.yaml                # ClusterIP Service (Port 80 -> 8080)
-        ├── ingress.yaml                # NGINX Ingress Routing & TLS Spec
-        ├── externalsecret.yaml         # AWS Secrets Manager ESO Integration
-        ├── serviceaccount.yaml         # EKS IRSA IAM Role ServiceAccount
-        ├── hpa.yaml                    # Horizontal Pod Autoscaler (2 to 5 pods)
-        ├── pdb.yaml                    # Pod Disruption Budget (minAvailable: 1)
-        ├── networkpolicy.yaml          # Amazon VPC CNI eBPF Pod Firewall
-        └── _helpers.tpl                # Helm Template Macro Functions
+VPC: 192.168.0.0/16 (Region: ap-south-1)
+├── Public Subnets (Internet Facing)
+│   ├── ap-south-1a: 192.168.1.0/24  --> AWS Load Balancer (ELB) / NAT Gateway 1
+│   └── ap-south-1b: 192.168.2.0/24  --> NAT Gateway 2
+│
+└── Private Subnets (Isolated Workloads)
+    ├── ap-south-1a: 192.168.60.0/24 --> EKS Worker Node 1 (Keycloak Pod 1)
+    ├── ap-south-1b: 192.168.61.0/24 --> EKS Worker Node 2 (Keycloak Pod 2)
+    └── ap-south-1c: 192.168.62.0/24 --> RDS PostgreSQL Subnet 3 (Multi-AZ Replica)
 ```
 
 ---
 
-### 1.4 Observability (o11y) Specifications
+### 2.2 Low-Level NetworkPolicy & Security Group Matrix
 
-| Metric Category | Source Endpoint | Key Target Metrics | Alert Threshold |
-| :--- | :--- | :--- | :--- |
-| **System Health** | `http://:9000/health/live`, `/health/ready` | Liveness & Readiness Status | Health check fails 3 consecutive times |
-| **Prometheus Metrics** | `http://:9000/metrics` | `vendor_keycloak_logins_total`, `jvm_memory_used_bytes` | Memory usage > 85% for > 5 minutes |
-| **Database Pool** | Micrometer Agroal Metrics | `agroal_active_count`, `agroal_awaiting_count` | Active connections > 80% of pool limit |
-| **Pod Resource Load** | EKS Metrics Server | CPU & Memory utilization | CPU > 75% triggers HPA auto-scale |
-| **Cluster Topology** | Infinispan Logs / JGroups | `ISPN100010: Finished rebalance` | Infinispan cluster membership drops < 2 |
+#### A. Amazon VPC Security Group (`keycloak-db-sg`)
+- **Group ID:** `sg-048b02a49f974e638`
+- **Inbound Rules:**
+  - `Protocol`: TCP | `Port`: 5432 | `Source`: `192.168.0.0/16` (EKS Private VPC CIDR Only)
+- **Outbound Rules:**
+  - Restricted to VPC internal routing.
 
----
-
-### 1.5 Security Indicators & Controls
-
-```text
-+-------------------------------------------------------------------------------+
-|                        ENTERPRISE SECURITY CONTROLS                           |
-+-------------------------------------------------------------------------------+
-| 1. ZERO HARDCODED SECRETS                                                     |
-|    - All credentials stored exclusively in AWS Secrets Manager.              |
-|    - Synced dynamically to Kubernetes Secret via External Secrets Operator.   |
-|                                                                               |
-| 2. EKS IRSA (IAM ROLES FOR SERVICE ACCOUNTS)                                  |
-|    - Passwordless authentication using AWS STS & OIDC Web Identity Tokens.    |
-|    - Short-lived JWT tokens rotated automatically by AWS EKS every 24 hours. |
-|                                                                               |
-| 3. ZERO-TRUST POD FIREWALLING (VPC CNI eBPF)                                  |
-|    - Ingress allowed ONLY on 8080 (HTTP), 9000 (Health), 7800 (JGroups).      |
-|    - Egress restricted strictly to 5432 (RDS PostgreSQL) and 443 (AWS APIs).  |
-|                                                                               |
-| 4. HARDENED CONTAINER RUNTIME                                                 |
-|    - Unprivileged execution running as Non-Root UID 1000 / GID 1000.          |
-|    - Privilege escalation disabled (allowPrivilegeEscalation: false).         |
-+-------------------------------------------------------------------------------+
-```
-
----
-
-### 1.6 Scalability Metrics & Performance SLA
-
-- **Service Level Agreement (SLA):** **99.99% Uptime** (Max allowable unplanned downtime < 52 minutes/year).
-- **Target Concurrent Users:** **5,000+ Active Concurrent User Sessions** with real-time Infinispan replication.
-- **Horizontal Pod Autoscaling (HPA):**
-  - **Min Replicas:** 2 pods (spread across Availability Zones `ap-south-1a` and `ap-south-1b`).
-  - **Max Replicas:** 5 pods under heavy peak load.
-  - **Scaling Triggers:** CPU utilization >= 75%, Memory utilization >= 80%.
-
----
-
-### 1.7 Disaster Recovery (DR) Objectives
-
-- **Recovery Time Objective (RTO):** **< 5 minutes** (Automated AWS RDS Multi-AZ failover and Kubernetes pod self-healing).
-- **Recovery Point Objective (RPO):** **0 (Zero Data Loss)** via Amazon RDS Multi-AZ synchronous block-level storage replication.
-- **Node Maintenance Protection:** Pod Disruption Budget (`pdb.yaml`) guarantees `minAvailable: 1` during AWS EKS node drains or upgrades.
-
----
-
-## 2. Implementation Phase
-
-### 2.1 Helm Implementation & Values Specs
-
-The production deployment uses the custom Helm chart located in `chart/` with configuration specified in `chart/values.yaml`:
+#### B. Kubernetes NetworkPolicy Matrix (`chart/templates/networkpolicy.yaml`)
 
 ```yaml
-# Top-level Domain & TLS Configuration
-domain: keycloak.tyagi.fun
-tls:
-  enabled: true
-  secretName: keycloak-tls-secret
-
-# High Availability Replication across AWS EKS Availability Zones
-replicaCount: 2
-
-# Keycloak Quarkus Runtime Configuration
-hostname: "keycloak.tyagi.fun"
-hostnameStrict: true
-proxyHeaders: "xforwarded"
-httpEnabled: true
-metricsEnabled: true
-healthEnabled: true
-
-# Database Configuration (Amazon RDS PostgreSQL Multi-AZ)
-database:
-  vendor: postgres
-  port: 5432
-  name: "keycloak"
-  username: "keycloak"
-  existingSecret: "keycloak-db-secret"
-
-# External Secrets Operator (ESO) & EKS IRSA Integration
-externalSecrets:
-  enabled: true
-  awsRegion: "ap-south-1"
-  awsSecretName: "production/keycloak/credentials"
-
-# Security & ServiceAccount Binding
-serviceAccount:
-  create: true
-  name: keycloak-service-account
-  annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::184430802476:role/KeycloakSecretsManagerRole"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 1. Traffic from NGINX Ingress
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080   # Keycloak HTTP
+        - protocol: TCP
+          port: 9000   # Quarkus Health & Metrics
+    # 2. Inter-pod JGroups Session Replication
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keycloak
+      ports:
+        - protocol: TCP
+          port: 7800   # JGroups Infinispan Clustering
+  egress:
+    # 1. PostgreSQL Database Access
+    - ports:
+        - protocol: TCP
+          port: 5432
+    # 2. CoreDNS Resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # 3. AWS Secrets Manager & STS APIs
+    - ports:
+        - protocol: TCP
+          port: 443
 ```
 
 ---
 
-### 2.2 Deployment Automation (GitLab CI/CD Pipeline Wrapper)
-
-Automated deployment pipeline defined in `.gitlab-ci.yml`:
-
-```yaml
-stages:
-  - lint
-  - validate
-  - deploy
-
-variables:
-  KUBE_NAMESPACE: "keycloak"
-  HELM_CHART_PATH: "./chart"
-
-lint_chart:
-  stage: lint
-  image: alpine/helm:latest
-  script:
-    - helm lint ${HELM_CHART_PATH}
-
-validate_templates:
-  stage: validate
-  image: alpine/helm:latest
-  script:
-    - helm template keycloak ${HELM_CHART_PATH} --namespace ${KUBE_NAMESPACE}
-
-deploy_production:
-  stage: deploy
-  image: alpine/helm:latest
-  script:
-    - helm upgrade --install keycloak ${HELM_CHART_PATH} --namespace ${KUBE_NAMESPACE} --create-namespace
-  only:
-    - main
-```
-
----
-
-## 3. Dev & Integration Environment Validation
-
-### 3.1 Integration & Dependency Matrix
+### 2.3 Secret Synchronization Protocol (IRSA + ESO + STS)
 
 ```mermaid
-graph TD
-    GitLab[GitLab CI/CD] -->|Deploys Chart| Helm[Helm 3 Engine]
-    Helm -->|Deploys Resources| EKS[AWS EKS Cluster ap-south-1]
-    
-    EKS -->|Mounts SA| IRSA[AWS IAM Role: KeycloakSecretsManagerRole]
-    IRSA -->|Fetches Secrets| SM[AWS Secrets Manager]
-    SM -->|Generates k8s Secret| ESO[External Secrets Operator]
-    
-    EKS -->|Connects via Private VPC| RDS[Amazon RDS PostgreSQL Multi-AZ]
-    NGINX[NGINX Ingress Controller] -->|Routes Traffic| EKS
+sequenceDiagram
+    autonumber
+    participant K8s as ServiceAccount (keycloak-service-account)
+    participant ESO as External Secrets Operator (ESO)
+    participant STS as AWS Security Token Service (STS)
+    participant SM as AWS Secrets Manager
+    participant SEC as K8s Secret (keycloak-db-secret)
+
+    K8s->>ESO: Pod Identity Webhook injects OIDC JWT Token
+    ESO->>STS: AssumeRoleWithWebIdentity (Role ARN: arn:aws:iam::184430802476:role/KeycloakSecretsManagerRole)
+    STS-->>ESO: Returns short-lived temporary AWS Access/Secret Key
+    ESO->>SM: GetSecretValue("production/keycloak/credentials")
+    SM-->>ESO: Decrypted JSON ("db-host", "db-password", "admin-password")
+    ESO->>SEC: Creates / Updates keycloak-db-secret
 ```
 
 ---
 
-### 3.2 Dev Validation & Smoke Test Report
+### 2.4 Detailed Container Runtime & Deployment Specifications
 
-| Test ID | Category | Test Case | Command / Method | Expected Result | Status |
-| :--- | :--- | :--- | :--- | :--- | :---: |
-| **TC-01** | Infra | EKS Node & Pod Health | `kubectl get pods -n keycloak` | 2/2 pods `Running` (`1/1 READY`) | **PASSED** |
-| **TC-02** | Security | ESO Secret Sync | `kubectl get externalsecret -n keycloak` | `STATUS: SecretSynced` | **PASSED** |
-| **TC-03** | Security | EKS IRSA JWT Injection | `kubectl describe pod -n keycloak` | `AWS_ROLE_ARN` & token mounted | **PASSED** |
-| **TC-04** | HA | Infinispan Session Cluster | `kubectl logs -n keycloak \| grep ISPN` | `Finished rebalance with 3 members` | **PASSED** |
-| **TC-05** | Ingress | HTTPS TLS Handshake | `curl -I https://keycloak.tyagi.fun/admin` | HTTP 200 / 302 OK with ZeroSSL TLS | **PASSED** |
-| **TC-06** | Resilience| Zero-Downtime Rolling Update | `kubectl rollout restart deployment` | 1-by-1 update with 0 dropped requests | **PASSED** |
+#### A. SecurityContext (Non-Root Execution)
+```yaml
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+```
+
+#### B. Resource Allocations & Scaling Specs
+```yaml
+# Container Resource Requests & Limits
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# Horizontal Pod Autoscaler (HPA)
+hpa:
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+# Pod Disruption Budget (PDB)
+pdb:
+  minAvailable: 1
+```
+
+#### C. Zero-Downtime Rolling Update Strategy
+```yaml
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 0
+    maxUnavailable: 1
+```
+*Design Rationale:* `maxSurge: 0` prevents cluster capacity exhaustion on 2-node worker groups. `maxUnavailable: 1` ensures 1 pod remains 100% active to serve live requests while the secondary pod updates.
+
+---
+
+### 2.5 Keycloak Quarkus Environment Variable Mapping
+
+| Environment Variable | Source | LLD Purpose |
+| :--- | :--- | :--- |
+| `KC_DB` | Static (`postgres`) | Sets PostgreSQL database driver. |
+| `KC_DB_URL_HOST` | `keycloak-db-secret` (`db-host`) | Dynamically injected RDS endpoint. |
+| `KC_DB_URL` | Interpolated string | `jdbc:postgresql://$(KC_DB_URL_HOST):5432/keycloak` |
+| `KC_DB_USERNAME` | Static (`keycloak`) | Database application user. |
+| `KC_DB_PASSWORD` | `keycloak-db-secret` (`password`) | Dynamically injected database password. |
+| `KEYCLOAK_ADMIN` | Static (`admin`) | Master realm superuser username. |
+| `KEYCLOAK_ADMIN_PASSWORD` | `keycloak-db-secret` (`admin-password`) | Master realm superuser password. |
+| `KC_HOSTNAME` | Values (`keycloak.tyagi.fun`) | Enforces strict canonical URL validation. |
+| `KC_PROXY_HEADERS` | Static (`xforwarded`) | Configures Quarkus to trust `X-Forwarded-*` headers from NGINX. |
+| `KC_CACHE_STACK` | Static (`kubernetes`) | Enables DNS-based Infinispan pod discovery. |
+| `JAVA_OPTS_APPEND` | Interpolated string | `-Djgroups.dns.query=keycloak-headless.keycloak.svc.cluster.local` |
+
+---
+
+### 2.6 Deliverable Matrix & Artifact References
+
+| Deliverable Item | File Location / Reference | Verification Command |
+| :--- | :--- | :--- |
+| **Helm Production Configuration** | [`chart/values.yaml`](file:///c:/Users/lenovo/OneDrive/Desktop/Keycloak/chart/values.yaml) | `helm lint ./chart` |
+| **Keycloak Deployment Spec** | [`chart/templates/deployment.yaml`](file:///c:/Users/lenovo/OneDrive/Desktop/Keycloak/chart/templates/deployment.yaml) | `kubectl get deployment keycloak -o yaml` |
+| **Ingress & TLS Definition** | [`chart/templates/ingress.yaml`](file:///c:/Users/lenovo/OneDrive/Desktop/Keycloak/chart/templates/ingress.yaml) | `kubectl get ingress -n keycloak` |
+| **AWS ESO Manifest** | [`chart/templates/externalsecret.yaml`](file:///c:/Users/lenovo/OneDrive/Desktop/Keycloak/chart/templates/externalsecret.yaml) | `kubectl get externalsecret -n keycloak` |
+| **EKS IRSA ServiceAccount** | [`chart/templates/serviceaccount.yaml`](file:///c:/Users/lenovo/OneDrive/Desktop/Keycloak/chart/templates/serviceaccount.yaml) | `kubectl describe sa keycloak-service-account -n keycloak` |
+| **Pod Firewall (eBPF)** | [`chart/templates/networkpolicy.yaml`](file:///c:/Users/lenovo/OneDrive/Desktop/Keycloak/chart/templates/networkpolicy.yaml) | `kubectl get networkpolicy -n keycloak` |
+| **Autoscaling & Reliability** | [`chart/templates/hpa.yaml`](file:///c:/Users/lenovo/OneDrive/Desktop/Keycloak/chart/templates/hpa.yaml), [`pdb.yaml`](file:///c:/Users/lenovo/OneDrive/Desktop/Keycloak/chart/templates/pdb.yaml) | `kubectl get hpa,pdb -n keycloak` |

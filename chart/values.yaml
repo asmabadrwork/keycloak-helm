@@ -2,7 +2,7 @@
 # Usage: helm upgrade --install keycloak ./chart --namespace keycloak --create-namespace
 
 # Top-level Domain & TLS Configuration
-domain: keycloak.tyagi.fun
+domain: keycloak-aws.opstree.dev
 
 tls:
   enabled: true
@@ -24,7 +24,7 @@ admin:
   password: ""
 
 # Keycloak Quarkus Runtime Configuration
-hostname: "keycloak.tyagi.fun"
+hostname: "keycloak-aws.opstree.dev"
 hostnameStrict: true
 proxyHeaders: "xforwarded"
 httpEnabled: true
@@ -38,7 +38,7 @@ database:
   host: "" # Dynamically pulled from AWS Secrets Manager property db-host via ESO
   port: 5432
   name: "keycloak"
-  username: "keycloak"
+  username: "postgres"
   createSecret: false
   existingSecret: "keycloak-db-secret"
   password: ""
@@ -47,7 +47,11 @@ database:
 externalSecrets:
   enabled: true
   awsRegion: "ap-south-1"
-  awsSecretName: "production/keycloak/credentials"
+  awsSecretName: "rds!db-8bd18135-d9dc-472b-83d8-36ed08a89ce6"
+  propertyHost: "host"
+  propertyPassword: "password"
+  adminPasswordSecretName: "production/keycloak/admin"
+  propertyAdminPassword: "admin-password"
 
 # NetworkPolicy Internal Pod Firewall Hardening (Amazon VPC CNI eBPF Controller)
 networkPolicy:
@@ -110,3 +114,15 @@ serviceAccount:
 podAntiAffinity:
   enabled: true
   type: soft
+
+# Tolerations for Tainted Worker Node Pools (dedicated=application, dedicated=database)
+tolerations:
+  - key: "dedicated"
+    operator: "Equal"
+    value: "application"
+    effect: "NoSchedule"
+  - key: "dedicated"
+    operator: "Equal"
+    value: "database"
+    effect: "NoSchedule"
+
