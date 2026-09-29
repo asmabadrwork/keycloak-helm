@@ -47,7 +47,7 @@ database:
 externalSecrets:
   enabled: true
   awsRegion: "ap-south-1"
-  awsSecretName: "rds!db-8bd18135-d9dc-472b-83d8-36ed08a89ce6"
+  awsSecretName: "rds!db-74515dc7-b661-4d00-88f9-89033497296c"
   propertyHost: "host"
   propertyPassword: "password"
   adminPasswordSecretName: "production/keycloak/admin"
@@ -108,7 +108,7 @@ serviceAccount:
   create: true
   name: keycloak-service-account
   annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::184430802476:role/KeycloakSecretsManagerRole"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::724446904294:role/KeycloakSecretsManagerRole"
 
 # High Availability Pod Anti-Affinity (Spreads pods across different nodes/AZs)
 podAntiAffinity:
