@@ -35,7 +35,7 @@ logLevel: "INFO"
 # Database Configuration (Amazon RDS PostgreSQL Multi-AZ HA - Zero Hardcoded Secrets via ESO)
 database:
   vendor: postgres
-  host: "d-dev1-rds-postgres-postgres.cl0caskygcz8.ap-south-1.rds.amazonaws.com"
+  host: "dev-negd-rds-postgres.cl0caskygcz8.ap-south-1.rds.amazonaws.com"
   port: 5432
   name: "keycloak"
   username: "postgres"
@@ -47,7 +47,7 @@ database:
 externalSecrets:
   enabled: true
   awsRegion: "ap-south-1"
-  awsSecretName: "rds!db-74515dc7-b661-4d00-88f9-89033497296c"
+  awsSecretName: "rds!db-591e0ce4-d55e-46a7-92aa-26218d90566e"
   propertyHost: "host"
   propertyPassword: "password"
   adminPasswordSecretName: "production/keycloak/admin"
