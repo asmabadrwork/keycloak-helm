@@ -47,7 +47,7 @@ database:
 externalSecrets:
   enabled: true
   awsRegion: "ap-south-1"
-  awsSecretName: "rds!db-591e0ce4-d55e-46a7-92aa-26218d90566e"
+  awsSecretName: "rds!db-3aacf463-6503-4e32-8181-7672297a2cfa"
   propertyHost: "host"
   propertyPassword: "password"
   adminPasswordSecretName: "production/keycloak/admin"
